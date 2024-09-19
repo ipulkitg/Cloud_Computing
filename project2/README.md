@@ -1,37 +1,57 @@
-# Project 2: AWS-Based Face Recognition Pipeline
+# Project 2: Serverless and Elastic Face Recognition on AWS
 
-This project implements a serverless, event-driven architecture on AWS to perform face recognition on user-uploaded videos.
-Utilizing AWS Lambda, S3, and Docker, the application processes videos by extracting frames and identifying faces using a pre-trained CNN model.
+This project implements a multi-tier, cloud-native face recognition pipeline using AWS services. It combines serverless and elastic compute design principles to provide a scalable application capable of processing video and image-based facial recognition tasks.
 
-## Features
+## 🧠 Overview
 
-- **Video Upload**: Users upload videos to an S3 input bucket.
-- **Frame Extraction**: An AWS Lambda function, triggered by the upload event, splits videos into individual frames using FFmpeg.
-- **Face Recognition**: Another Lambda function, packaged with a Docker container, processes frames to detect faces using a pre-trained CNN model.
-- **Results Storage**: Recognition results are stored as text files in an S3 output bucket.
+- **Part 1 (Serverless Architecture)**: Uses AWS Lambda and S3 to perform face detection on uploaded videos. It extracts frames using FFmpeg and runs inference using a pre-trained CNN model.
+- **Part 2 (Elastic IaaS Architecture)**: Builds a multi-tier application with a custom autoscaling App Tier on EC2. It processes image classification requests from users via a single persistent Web Tier, manages job queues with SQS, and stores input/output via S3.
 
-## Setup Instructions
+## 🕸 Web Tier
 
-1. **AWS Configuration**:
-   - Ensure AWS CLI is installed and configured with appropriate credentials.
-   - Set up the necessary IAM roles with permissions for S3 and Lambda.
+- Runs on a persistent EC2 instance (`web-instance`)
+- Handles HTTP POST requests with `.jpg` images under the key `inputFile`
+- Sends image classification requests to the App Tier using SQS
+- Receives classification results from the App Tier via a response queue
+- Responds with the format: `<filename>:<classification_result>`
+- Manages autoscaling of the App Tier using a custom scaling algorithm (no AWS autoscaling used)
 
-2. **S3 Buckets**:
-   - Create three S3 buckets:
-     - `input-bucket` for video uploads.
-     - `frame-bucket` for storing extracted frames.
-     - `output-bucket` for storing recognition results.
+## ⚙️ App Tier
 
-3. **Lambda Functions**:
-   - **Frame Extraction Function**:
-     - Use FFmpeg to extract frames from videos.
-     - Trigger: S3 `input-bucket` upload event.
-   - **Face Recognition Function**:
-     - Packaged with a Docker container containing the pre-trained CNN model.
-     - Trigger: S3 `frame-bucket` upload event.
+- Composed of EC2 instances that are launched and terminated based on request load
+- Instances are launched using a custom AMI that contains the face recognition model
+- Model is based on PyTorch and uses CPU inference
+- Each instance:
+  - Polls the request queue
+  - Downloads the image from S3
+  - Runs inference
+  - Uploads the result to the output S3 bucket
+  - Sends result to the response SQS queue
 
-4. **Testing**:
-   - Upload a sample video to the `input-bucket`.
-   - Monitor the `output-bucket` for the results file containing recognized faces.
+## 🗂 Data Tier
 
-Ensure all AWS resources are correctly configured and that the Lambda functions have the necessary permissions to access S3 buckets.
+- Uses two S3 buckets:
+  - **Input Bucket** (`<ASU_ID>-in-bucket`) to store incoming images
+  - **Output Bucket** (`<ASU_ID>-out-bucket`) to store classification results
+- SQS Queues:
+  - **Request Queue** (`<ASU_ID>-req-queue`) for Web → App tier communication
+  - **Response Queue** (`<ASU_ID>-resp-queue`) for App → Web tier results
+
+## 🧪 Testing & Validation
+
+- **Workload Generator** and **Grading Scripts** were used for validation
+- App Tier successfully scaled between 0 and 20 instances
+- All requests processed correctly within latency constraints (≤ 80 sec for 100 requests)
+- High accuracy achieved using the provided labeled dataset
+
+## ✅ Notes
+
+- All AWS resources are hosted in the `us-east-1` region
+- IAM roles used with appropriate permissions: EC2 ReadOnly, S3 FullAccess, SQS FullAccess
+- System tested with 10 and 50 concurrent image requests
+- Final results verified using the grading script and dataset statistics
+
+
+## 🗺 Architecture
+
+![Architecture Diagram](architecture.png)
